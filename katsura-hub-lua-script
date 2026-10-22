@@ -4,7 +4,7 @@
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jadpy/suki/refs/heads/main/orion')))()
 
 local Window = OrionLib:MakeWindow({
-    Name = "katsura hub",
+    Name = "かつらはぶv0.5",
     HidePremium = false,
     SaveConfig = false,
     ConfigFolder = "KatsuraHubConfig"
@@ -28,7 +28,6 @@ local RemoteDestroyGrabLine = GrabEvents:WaitForChild("DestroyGrabLine")
 local RemoteCreateGrabLine = GrabEvents:WaitForChild("CreateGrabLine")
 local SpawnToyRF = ReplicatedStorage:WaitForChild("MenuToys"):WaitForChild("SpawnToyRemoteFunction")
 
--- アンチ用リモート
 local MenuToys = ReplicatedStorage:WaitForChild("MenuToys")
 local CharacterEvents = ReplicatedStorage:WaitForChild("CharacterEvents")
 local PlayerEvents = ReplicatedStorage:WaitForChild("PlayerEvents")
@@ -36,7 +35,9 @@ local DestroyToy = MenuToys:WaitForChild("DestroyToy")
 local Struggle = CharacterEvents:WaitForChild("Struggle")
 local RagdollRemote = CharacterEvents:FindFirstChild("RagdollRemote")
 
+-- ========================================
 -- 状態管理
+-- ========================================
 local Config = {
     PlayerList = {},
     DriftKickT = false,
@@ -61,7 +62,6 @@ local Config = {
     struggleRef     = nil,
 }
 
--- 👤2 タブ用
 local BlobKillConfig = {
     isSelectedKill = false,
     currentBlobman = nil,
@@ -75,7 +75,6 @@ local BlobKillConfig = {
     MAX_BLOBMAN_DISTANCE = 500,
 }
 
--- blob kill v2 用
 local Imokill = {
     isSelectedKill = false,
     selectedPlayer = nil,
@@ -88,7 +87,6 @@ local Imokill = {
     SELECTED_AURA_RANGE = 40,
 }
 
--- プレイヤータブ用 (FTAP Light)
 local Settings = {
     WalkspeedEnabled = false,
     WalkspeedValue = 5,
@@ -100,29 +98,6 @@ local Settings = {
     Connections = {},
 }
 
--- toys タブ用 (フェザー)
-local FeatherConfig = {
-    Enabled = false,
-    spacing = 3,
-    heightOffset = 2,
-    backwardOffset = 3,
-    maxSparklers = 20,
-    tiltAngle = 45,
-    waveSpeed = 2,
-    baseAmplitude = 1,
-    followPlayer = true,
-    rotationOffset = 0,
-}
-local FeatherToys = {}
-local FeatherRowPoints = {}
-local FeatherAssignedToys = {}
-local FeatherLoopConn = nil
-local FeatherTime = 0
-local AvailableObjects = { "PalletLightBrown", "GlassBoxGray", "FireworkSparkler" }
-local ObjectSet = {}
-for _, id in ipairs(AvailableObjects) do ObjectSet[id] = true end
-
--- その他タブ用 (冷笑ボット)
 local AutoReplyConfig = {
     enabled = false,
     replyPatterns = {
@@ -132,7 +107,6 @@ local AutoReplyConfig = {
     }
 }
 
--- グローバル変数
 local orbitAngle = 0
 local orbitHeight = 12
 local orbitRadius = 15
@@ -243,6 +217,64 @@ local function sitOnBlobman()
     end)
     task.wait(0.5)
     return hum.SeatPart == seat
+end
+
+-- ========================================
+-- Auto Sit（ブロブマンに自動で座る）
+-- ========================================
+local AutoSitEnabled = false
+local AutoSitThread = nil
+
+local function StartAutoSit()
+    AutoSitEnabled = true
+    AutoSitThread = task.spawn(function()
+        while AutoSitEnabled do
+            task.wait(0.05)
+            local character = Player.Character
+            if not character then continue end
+            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if not (humanoidRootPart and humanoid and humanoid.Health > 0) then continue end
+            local myToys = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys")
+            if not myToys then continue end
+            local blobman = myToys:FindFirstChild("CreatureBlobman")
+            if blobman then
+                local vehicleSeat = blobman:FindFirstChild("VehicleSeat")
+                if vehicleSeat then
+                    pcall(function() vehicleSeat:Sit(humanoid) end)
+                else
+                    pcall(function() DestroyToy:FireServer(blobman) end)
+                end
+            else
+                pcall(function()
+                    SpawnToyRF:InvokeServer("CreatureBlobman", humanoidRootPart.CFrame * CFrame.new(0, 15, 20), Vector3.zero)
+                end)
+                local newBlob = myToys:WaitForChild("CreatureBlobman", 1)
+                if newBlob then
+                    local vehicleSeat = newBlob:WaitForChild("VehicleSeat", 1)
+                    if vehicleSeat and humanoid then
+                        pcall(function() vehicleSeat:Sit(humanoid) end)
+                    else
+                        pcall(function() DestroyToy:FireServer(newBlob) end)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function StopAutoSit()
+    AutoSitEnabled = false
+    if AutoSitThread then task.cancel(AutoSitThread); AutoSitThread = nil end
+end
+
+local function SetAutoSit(enabled)
+    if enabled then
+        if AutoSitEnabled then return end
+        StartAutoSit()
+    else
+        StopAutoSit()
+    end
 end
 
 -- ========================================
@@ -756,7 +788,8 @@ local function StartDriftKickV2(target)
         OrionLib:MakeNotification({ Name = "エラー", Content = "Blobmanを召喚できませんでした", Time = 3 })
         Config.DriftKickT = false
         return
-    end    currentBlobman = blobman
+    end
+    currentBlobman = blobman
     local char = Player.Character
     local hum = char and char:FindFirstChild("Humanoid")
     if hum and not hum.SeatPart then
@@ -1473,7 +1506,7 @@ task.spawn(function()
 end)
 
 -- =====================================================
--- 👤2 タブ
+-- 👤2 タブ（Blob Kill）
 -- =====================================================
 local function GetSeatedBlobman()
     local char = Player.Character
@@ -1868,173 +1901,680 @@ end
 local function ApplyFOV() Cam.FieldOfView = Settings.FOV end
 
 -- =====================================================
--- toys 機能 (フェザー)
+-- Auras（オーラタブ用）
 -- =====================================================
-local function findAllFeatherObjects()
-    local toys = {}
-    for _, item in ipairs(Workspace:GetDescendants()) do
-        if item:IsA("Model") and ObjectSet[item.Name] then
-            table.insert(toys, item)
+local Auras = (function()
+    local A_Players = game:GetService("Players")
+    local A_RS = game:GetService("ReplicatedStorage")
+    local A_LP = A_Players.LocalPlayer
+    local A_GrabEvents = A_RS:WaitForChild("GrabEvents")
+    local A_PlayerEvents = A_RS:WaitForChild("PlayerEvents")
+    local A_SetNetworkOwner = A_GrabEvents:WaitForChild("SetNetworkOwner")
+    local A_toysFolder = workspace:FindFirstChild(A_LP.Name .. "SpawnedInToys")
+        or workspace:WaitForChild(A_LP.Name .. "SpawnedInToys")
+
+    local function GetHRH(character)
+        if character then
+            return character:FindFirstChild("Head"),
+                character:FindFirstChild("HumanoidRootPart"),
+                character:FindFirstChild("Humanoid")
         end
     end
-    return toys
-end
-
-local function getPrimaryPart(model)
-    if model.PrimaryPart then return model.PrimaryPart end
-    local potentialParts = { "Handle", "Main", "Part", "Base", "Sparkler", "Firework", "Blade", "Candle", "Keyboard", "Box", "Decoy", "Missile", "Ladder", "Blob", "Ball", "Crystal", "Island", "Ufo", "Jukebox", "Couch", "Boombox", "Snowflake", "Diamond", "Tractor" }
-    for _, partName in ipairs(potentialParts) do
-        local part = model:FindFirstChild(partName)
-        if part and part:IsA("BasePart") then return part end
+    local function GetCharPart(character, name)
+        if character then return character:WaitForChild(name, 1) end
     end
-    for _, child in ipairs(model:GetChildren()) do
-        if child:IsA("BasePart") then return child end
-    end
-    return nil
-end
-
-local function attachPhysics(part, pValue, dValue)
-    if not part then return nil, nil end
-    local existingBG = part:FindFirstChildOfClass("BodyGyro")
-    local existingBP = part:FindFirstChildOfClass("BodyPosition")
-    if existingBG then existingBG:Destroy() end
-    if existingBP then existingBP:Destroy() end
-    local BP = Instance.new("BodyPosition")
-    local BG = Instance.new("BodyGyro")
-    BP.P = pValue or 15000
-    BP.D = dValue or 200
-    BP.MaxForce = Vector3.new(1, 1, 1) * 1e10
-    BP.Parent = part
-    BG.P = pValue or 15000
-    BG.D = dValue or 200
-    BG.MaxTorque = Vector3.new(1, 1, 1) * 1e10
-    BG.Parent = part
-    return BG, BP
-end
-
-local function createFeatherRowPoints(count)
-    local points = {}
-    if count == 0 then return points end
-    local halfCount = math.floor(count / 2)
-    local isOdd = count % 2 == 1
-    for i = 1, count do
-        local x = isOdd and (i - math.ceil(count / 2)) * FeatherConfig.spacing or (i - halfCount - 0.5) * FeatherConfig.spacing
-        local part = Instance.new("Part")
-        part.CanCollide = false
-        part.Anchored = true
-        part.Transparency = 1
-        part.Size = Vector3.new(4, 1, 4)
-        part.Parent = workspace
-        points[i] = { offsetX = x, part = part, assignedToy = nil }
-    end
-    return points
-end
-
-local function assignFeatherToysToPoints()
-    FeatherAssignedToys = {}
-    local distanceGroups = {}
-    for i, point in ipairs(FeatherRowPoints) do
-        local absDistance = math.abs(point.offsetX)
-        if not distanceGroups[absDistance] then distanceGroups[absDistance] = {} end
-        table.insert(distanceGroups[absDistance], i)
-    end
-    local sortedDistances = {}
-    for distance, _ in pairs(distanceGroups) do table.insert(sortedDistances, distance) end
-    table.sort(sortedDistances)
-    for rank, distance in ipairs(sortedDistances) do
-        for _, pointIndex in ipairs(distanceGroups[distance]) do
-            FeatherRowPoints[pointIndex].distanceRank = rank
+    local function Teleport(part, baseCF, offsetCF)
+        if part and baseCF and offsetCF then
+            part.CFrame = baseCF * offsetCF
+            part.Velocity = Vector3.zero
+            part.RotVelocity = Vector3.zero
         end
     end
-    for i = 1, math.min(#FeatherToys, #FeatherRowPoints) do
-        local toy = FeatherToys[i]
-        if toy and toy:IsA("Model") then
-            local primaryPart = getPrimaryPart(toy)
-            if primaryPart then
-                for _, child in ipairs(toy:GetChildren()) do
-                    if child:IsA("BasePart") then
-                        child.CanCollide = false
-                        child.CanTouch = false
-                        child.Anchored = false
+    local function Ownerboat(part)
+        if not part then return nil end
+        A_SetNetworkOwner:FireServer(part, part.CFrame)
+        if part:FindFirstChild("PartOwner") and part.PartOwner.Value == A_LP.Name then
+            return part.PartOwner
+        end
+        return nil
+    end
+    local function UnGrab(part)
+        A_GrabEvents.DestroyGrabLine:FireServer(part)
+    end
+    local function SpawnToy(name, cframe)
+        task.spawn(function()
+            A_RS.MenuToys.SpawnToyRemoteFunction:InvokeServer(name, cframe or CFrame.new(), Vector3.zero)
+        end)
+    end
+    local function DestroyT(toy)
+        if toy then A_RS.MenuToys.DestroyToy:FireServer(toy) end
+    end
+
+    local AuraRadius = 15
+    local AuraFlingPower = 100
+    local AuraHeavenPower = 1
+    local InputPlayersSpeed = 16
+    local InputPlayersPower = 24
+    local AllWhitelisted = {}
+
+    -- 1) Players Aura
+    local GrabAuraEnabled = false
+    local SeletedGAM = "Fling"
+    local function SetGrabAuraMode(mode) SeletedGAM = mode end
+    local function SetGrabAura(enabled)
+        GrabAuraEnabled = enabled
+        task.spawn(function()
+            while GrabAuraEnabled do
+                task.wait()
+                local character = A_LP.Character
+                if not character then continue end
+                local _, hrp, humanoid = GetHRH(character)
+                if not (hrp and humanoid and humanoid.Health > 0) then continue end
+                for _, plr in A_Players:GetPlayers() do
+                    if plr ~= A_LP and not table.find(AllWhitelisted, plr) and plr.Character then
+                        local _, tHRP, tHum = GetHRH(plr.Character)
+                        if tHRP and tHum and tHum.Health > 0
+                            and (hrp.Position - tHRP.Position).Magnitude <= AuraRadius then
+                            if SeletedGAM == "Network" then
+                                if tHRP:FindFirstChild("PartOwner") and tHRP.PartOwner.Value == A_LP.Name then
+                                    tHum.Sit = false
+                                    tHum.WalkSpeed = InputPlayersSpeed
+                                else
+                                    Ownerboat(tHRP)
+                                end
+                            elseif SeletedGAM == "Fling" then
+                                if Ownerboat(tHRP) then
+                                    tHRP.Velocity = (tHRP.Position - hrp.Position).Unit * AuraFlingPower + Vector3.new(0, 50, 0)
+                                    UnGrab(tHRP)
+                                end
+                            elseif SeletedGAM == "Kill" then
+                                local fall = workspace.FallenPartsDestroyHeight
+                                if Ownerboat(tHRP) then
+                                    Teleport(tHRP, CFrame.new(0, -50000, 0), CFrame.new())
+                                    task.wait(0.1)
+                                    workspace.FallenPartsDestroyHeight = -45000
+                                    task.wait()
+                                    workspace.FallenPartsDestroyHeight = fall
+                                end
+                            elseif SeletedGAM == "Send To The Heaven" then
+                                if Ownerboat(tHRP) and not tHRP:FindFirstChild("Send To The Heaven") then
+                                    local bv = Instance.new("BodyVelocity", tHRP)
+                                    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                                    bv.Velocity = Vector3.new(0, 50, 0) * AuraHeavenPower
+                                    bv.Name = "Send To The Heaven"
+                                    task.spawn(function()
+                                        while tHRP and tHRP.Parent
+                                            and tHRP:FindFirstChild("PartOwner")
+                                            and tHRP.PartOwner.Value == A_LP.Name do
+                                            task.wait()
+                                        end
+                                        if bv then bv:Destroy() end
+                                    end)
+                                end
+                            elseif SeletedGAM == "Void" then
+                                if Ownerboat(tHRP) then
+                                    tHRP.Velocity = Vector3.new(0, -1e8, 0)
+                                    UnGrab(tHRP)
+                                end
+                            end
+                        end
                     end
                 end
-                local BG, BP = attachPhysics(primaryPart)
-                local toyTable = {
-                    BG = BG, BP = BP, Pallet = primaryPart, Model = toy,
-                    RowIndex = i,
-                    offsetX = FeatherRowPoints[i].offsetX,
-                    distanceRank = FeatherRowPoints[i].distanceRank
-                }
-                FeatherRowPoints[i].assignedToy = toyTable
-                table.insert(FeatherAssignedToys, toyTable)
             end
-        end
+        end)
     end
-    return FeatherAssignedToys
-end
 
-local function startFeatherLoop()
-    if FeatherLoopConn then FeatherLoopConn:Disconnect(); FeatherLoopConn = nil end
-    FeatherTime = 0
-    FeatherLoopConn = RunService.RenderStepped:Connect(function(dt)
-        if not FeatherConfig.Enabled or not Player.Character then return end
-        local humanoidRootPart = Player.Character:FindFirstChild("HumanoidRootPart")
-        local torso = Player.Character:FindFirstChild("Torso") or Player.Character:FindFirstChild("UpperTorso")
-        if not humanoidRootPart or not torso then return end
-        FeatherTime += dt * FeatherConfig.waveSpeed
-        local charCFrame = humanoidRootPart.CFrame
-        local rightVector = charCFrame.RightVector
-        local lookVector = charCFrame.LookVector
-        local backVector = -lookVector
-        local basePosition
-        if FeatherConfig.followPlayer then
-            basePosition = torso.Position + Vector3.new(0, FeatherConfig.heightOffset, 0) + (backVector * FeatherConfig.backwardOffset)
-        else
-            basePosition = Vector3.new(0, FeatherConfig.heightOffset, 0) + (backVector * FeatherConfig.backwardOffset)
-        end
-        for i, point in ipairs(FeatherRowPoints) do
-            if point.assignedToy and point.assignedToy.BP and point.assignedToy.BG then
-                local toy = point.assignedToy
-                local targetPosition = basePosition + (rightVector * toy.offsetX)
-                local amplitude = FeatherConfig.baseAmplitude * toy.distanceRank
-                local waveMovement = math.sin(FeatherTime) * amplitude
-                local finalPosition = targetPosition + Vector3.new(0, waveMovement, 0)
-                if point.part then point.part.Position = finalPosition end
-                toy.BP.Position = finalPosition
-                local backYRotation = math.atan2(-lookVector.X, -lookVector.Z) + math.rad(FeatherConfig.rotationOffset)
-                local baseCFrame = CFrame.new(finalPosition) * CFrame.Angles(0, backYRotation, 0)
-                local tiltedCFrame = baseCFrame * CFrame.Angles(math.rad(-FeatherConfig.tiltAngle), 0, 0)
-                toy.BG.CFrame = toy.BG.CFrame:Lerp(tiltedCFrame, 0.3)
+    -- 2) Banana Aura
+    local BananaAuraEnabled = false
+    local function SetBananaAura(enabled)
+        BananaAuraEnabled = enabled
+        task.spawn(function()
+            while BananaAuraEnabled do
+                task.wait()
+                local character = A_LP.Character
+                if not character then continue end
+                local _, hrp, humanoid = GetHRH(character)
+                if not (hrp and humanoid and humanoid.Health > 0) then continue end
+                SpawnToy("FoodBanana", hrp.CFrame * CFrame.new(0, 15, 20))
+                local banana = A_toysFolder:WaitForChild("FoodBanana", 1)
+                if not banana then continue end
+                banana.Name = "BananaAura"
+                local soundPart = banana:WaitForChild("SoundPart", 1)
+                local holdPart = banana:WaitForChild("HoldPart", 1)
+                if not (soundPart and holdPart) then DestroyT(banana); continue end
+                local holdItemRF = holdPart:WaitForChild("HoldItemRemoteFunction", 1)
+                local dropItemRF = holdPart:WaitForChild("DropItemRemoteFunction", 1)
+                local rigid = holdPart:WaitForChild("RigidConstraint", 1)
+                local deadline = tick()
+                while true do
+                    task.wait()
+                    holdItemRF:InvokeServer(banana, character)
+                    if not BananaAuraEnabled
+                        or not humanoid or humanoid.Health <= 0
+                        or rigid.Attachment1
+                        or tick() - deadline > 3 then break end
+                end
+                if rigid.Attachment1 and rigid.Attachment1.Parent
+                    and rigid.Attachment1.Parent.Parent
+                    and rigid.Attachment1.Parent.Parent.Name == A_LP.Name then
+                    A_RS.HoldEvents.Use:FireServer(banana)
+                    while true do
+                        task.wait()
+                        if not banana:FindFirstChild("EdiblePart") then break end
+                    end
+                    pcall(function() dropItemRF:InvokeServer(banana) end)
+                    local deadline2 = tick()
+                    local owner
+                    while true do
+                        task.wait()
+                        owner = Ownerboat(soundPart)
+                        if not BananaAuraEnabled or not soundPart
+                            or not humanoid or humanoid.Health <= 0
+                            or (hrp.Position - soundPart.Position).Magnitude > 20
+                            or tick() - deadline2 > 3 or owner then break end
+                    end
+                    if owner then
+                        soundPart.CanCollide = false
+                        UnGrab(soundPart)
+                        while BananaAuraEnabled and task.wait()
+                            and soundPart.Parent
+                            and not soundPart:FindFirstChild("PartOwner") do
+                            Teleport(soundPart, workspace.SpawnLocation.CFrame,
+                                CFrame.new(math.random(-6767,6767), 6767, math.random(-6767,6767)))
+                            for _, plr in A_Players:GetPlayers() do
+                                if plr ~= A_LP and plr.Character then
+                                    local _, tHRP, tHum = GetHRH(plr.Character)
+                                    if tHum and tHum.Health > 0
+                                        and tHum:FindFirstChild("Ragdolled")
+                                        and not tHum.Ragdolled.Value
+                                        and (hrp.Position - tHRP.Position).Magnitude <= AuraRadius then
+                                        Teleport(soundPart, tHRP.CFrame, CFrame.new(0,-1.5,0))
+                                        task.wait(0.05)
+                                        Teleport(soundPart, workspace.SpawnLocation.CFrame,
+                                            CFrame.new(math.random(-6767,6767), 6767, math.random(-6767,6767)))
+                                        task.wait()
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                DestroyT(banana)
             end
+        end)
+    end
+
+    -- 3) Extinguish Aura
+    local ExtinguishAuraEnabled = false
+    local function SetExtinguishAura(enabled)
+        ExtinguishAuraEnabled = enabled
+        task.spawn(function()
+            while ExtinguishAuraEnabled do
+                task.wait()
+                local character = A_LP.Character
+                if not character then continue end
+                local hrp = GetCharPart(character, "HumanoidRootPart")
+                local humanoid = GetCharPart(character, "Humanoid")
+                if not (hrp and humanoid) then continue end
+                SpawnToy("FireExtinguisher", hrp.CFrame * CFrame.new(0, 10, 20))
+                local ext = A_toysFolder:WaitForChild("FireExtinguisher", 1)
+                if not ext then continue end
+                ext.Name = "ExtinguishAura"
+                local soundPart = ext:WaitForChild("SoundPart", 1)
+                local extPart = ext:WaitForChild("ExtinguishPart", 1)
+                if not (soundPart and extPart) then DestroyT(ext); continue end
+                local deadline = tick()
+                local owner
+                while true do
+                    task.wait()
+                    owner = Ownerboat(soundPart)
+                    if not ExtinguishAuraEnabled or not soundPart
+                        or tick() - deadline > 1.5 or owner then break end
+                end
+                if owner then
+                    for _, p in ext:GetChildren() do
+                        if p:IsA("Part") or p:IsA("MeshPart") then
+                            p.Transparency = 1
+                            p.CanCollide = false
+                            p.CanQuery = false
+                        end
+                    end
+                    local att = ext:FindFirstChild("Attachment0", true)
+                    if att then att:Destroy() end
+                    soundPart.CFrame = CFrame.new(67, 676767, 67)
+                    local bp = Instance.new("BodyPosition", soundPart)
+                    bp.Position = Vector3.new(67, 676767, 67)
+                    bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bp.D = 100
+                    while ExtinguishAuraEnabled
+                        and soundPart.Parent
+                        and soundPart:FindFirstChild("PartOwner")
+                        and soundPart.PartOwner.Value == A_LP.Name
+                        and task.wait(0.05) do
+                        local hrp2 = GetCharPart(A_LP.Character, "HumanoidRootPart")
+                        if hrp2 and extPart then
+                            extPart.Size = Vector3.new(AuraRadius, AuraRadius, AuraRadius)
+                            extPart.CFrame = hrp2.CFrame
+                            extPart.Velocity = Vector3.zero
+                            extPart.RotVelocity = Vector3.zero
+                            task.wait(0.05)
+                            extPart.CFrame = CFrame.new(67, 676767, 67)
+                            extPart.Velocity = Vector3.zero
+                            extPart.RotVelocity = Vector3.zero
+                        end
+                    end
+                end
+                DestroyT(ext)
+            end
+        end)
+    end
+
+    -- 4) Toys Aura
+    local ToysAuraEnabled = false
+    local ToysAuraMode = "Fling"
+    local Params = OverlapParams.new()
+    Params.FilterType = Enum.RaycastFilterType.Exclude
+    Params.FilterDescendantsInstances = {
+        workspace.Map, workspace.Plots, workspace.PlotItems,
+        workspace.Waypoints, workspace.Slots,
+    }
+    local function SetToysAuraMode(mode) ToysAuraMode = mode end
+    local function SetToysAura(enabled)
+        ToysAuraEnabled = enabled
+        task.spawn(function()
+            while ToysAuraEnabled do
+                task.wait(0.1)
+                local character = A_LP.Character
+                local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                if not hrp then continue end
+                Params.FilterDescendantsInstances = {
+                    character, A_toysFolder,
+                    workspace.Map, workspace.Plots, workspace.PlotItems,
+                    workspace.Waypoints, workspace.Slots,
+                }
+                for _, part in workspace:GetPartBoundsInRadius(hrp.Position, AuraRadius * 2, Params) do
+                    if part.Parent:FindFirstChildOfClass("Humanoid") then continue end
+                    local po = part:FindFirstChild("PartOwner")
+                    local isMine = po and po.Value == A_LP.Name
+                    if ToysAuraMode == "Fling" then
+                        if isMine then
+                            part.Velocity = (part.Position - hrp.Position).Unit * AuraFlingPower + Vector3.new(0, 50, 0)
+                        elseif part.CanQuery then
+                            A_SetNetworkOwner:FireServer(part, part.CFrame)
+                        end
+                    elseif ToysAuraMode == "Noclip" then
+                        if isMine then
+                            for _, p in part.Parent:GetChildren() do
+                                if p:IsA("Part") or p:IsA("MeshPart") then p.CanCollide = false end
+                            end
+                        elseif part.CanQuery then
+                            A_SetNetworkOwner:FireServer(part, part.CFrame)
+                        end
+                    elseif ToysAuraMode == "Send To The Heaven" then
+                        if isMine then
+                            if not part:FindFirstChild("Send To The Heaven") then
+                                local bv = Instance.new("BodyVelocity", part)
+                                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                                bv.Velocity = Vector3.new(0, 50, 0) * AuraHeavenPower
+                                bv.Name = "Send To The Heaven"
+                            end
+                        elseif part.CanQuery then
+                            A_SetNetworkOwner:FireServer(part, part.CFrame)
+                        end
+                    elseif ToysAuraMode == "Void" then
+                        if isMine then
+                            for _, p in part.Parent:GetChildren() do
+                                if p:IsA("Part") or p:IsA("MeshPart") then p.CanCollide = false end
+                            end
+                            part.Velocity = Vector3.new(0, -1e8, 0)
+                        elseif part.CanQuery then
+                            A_SetNetworkOwner:FireServer(part, part.CFrame)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    -- 5) Blobman Aura
+    local BlobAuraEnabled = false
+    local BlobmanAuraMode = "Kick"
+    local function SetBlobmanAuraMode(mode) BlobmanAuraMode = mode end
+    local function SetBlobmanAura(enabled)
+        BlobAuraEnabled = enabled
+        task.spawn(function()
+            while BlobAuraEnabled do
+                task.wait()
+                local character = A_LP.Character
+                if not character then continue end
+                local _, hrp, humanoid = GetHRH(character)
+                if not (hrp and humanoid and humanoid.Health > 0
+                    and humanoid.SeatPart and humanoid.SeatPart.Parent
+                    and humanoid.SeatPart.Parent.Name == "CreatureBlobman") then
+                    continue
+                end
+                local parent = humanoid.SeatPart.Parent
+                local script = parent:FindFirstChild("BlobmanSeatAndOwnerScript")
+                local lDetect = parent:FindFirstChild("LeftDetector")
+                if not (script and lDetect) then continue end
+                local grab = script:FindFirstChild("CreatureGrab")
+                local release = script:FindFirstChild("CreatureRelease")
+                local lWeld = lDetect:FindFirstChild("LeftWeld")
+                if not (grab and release and lWeld) then continue end
+                lWeld.Enabled = false
+                for _, plr in A_Players:GetPlayers() do
+                    if plr ~= A_LP and not table.find(AllWhitelisted, plr) and plr.Character then
+                        local _, tHRP, tHum = GetHRH(plr.Character)
+                        if tHum and tHum.Health > 0
+                            and (hrp.Position - tHRP.Position).Magnitude <= AuraRadius then
+                            if BlobmanAuraMode == "Kick" then
+                                Ownerboat(tHRP)
+                                tHRP.Velocity = Vector3.new(0, 250, 0)
+                                UnGrab(tHRP)
+                                task.wait(0.05)
+                                grab:FireServer(lDetect, tHRP, lWeld)
+                                task.wait(0.1)
+                            elseif BlobmanAuraMode == "Network" then
+                                grab:FireServer(lDetect, tHRP, lWeld)
+                                task.wait()
+                                release:FireServer(lWeld)
+                                tHum.WalkSpeed = InputPlayersSpeed
+                                tHum.JumpPower = InputPlayersPower
+                                task.wait(0.1)
+                            elseif BlobmanAuraMode == "Break Gucci" then
+                                grab:FireServer(lDetect, tHRP, lWeld)
+                                release:FireServer(lWeld)
+                                tHum.Sit = true
+                                task.wait(0.1)
+                                tHum.Sit = false
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    return {
+        SetGrabAuraMode = SetGrabAuraMode,
+        SetGrabAura = SetGrabAura,
+        SetBananaAura = SetBananaAura,
+        SetExtinguishAura = SetExtinguishAura,
+        SetToysAuraMode = SetToysAuraMode,
+        SetToysAura = SetToysAura,
+        SetBlobmanAuraMode = SetBlobmanAuraMode,
+        SetBlobmanAura = SetBlobmanAura,
+        SetRadius = function(v) AuraRadius = v end,
+        SetFlingPower = function(v) AuraFlingPower = v end,
+        SetHeavenPower = function(v) AuraHeavenPower = v end,
+        SetPlayersSpeed = function(v) InputPlayersSpeed = v end,
+        SetPlayersPower = function(v) InputPlayersPower = v end,
+        SetWhitelist = function(tbl) AllWhitelisted = tbl end,
+    }
+end)()
+
+-- =====================================================
+-- ダンス機能（Dancesタブ用）
+-- =====================================================
+local Dance = {
+    poseConnection = nil,
+    ragdollSpamConn = nil,
+    activeMode = "off",
+    selectedDance = "Floss Dance",
+    danceEnabled = false,
+}
+
+local DanceDefs = {}
+DanceDefs["Floss Dance"] = {
+    speed = 10,
+    pose = function(phase)
+        local armSide = 0.9599 * math.sin(phase)
+        local leftArmZ = 0.9 * math.cos(phase)
+        local rightArmZ = -0.9 * math.cos(phase)
+        local hipTwist = -0.349 * math.sin(phase)
+        local torsoTwist = -0.244 * math.sin(phase)
+        local kneeBounce = 0.12 * math.abs(math.sin(phase * 2))
+        return {
+            Torso = CFrame.new(0, -kneeBounce, 0) * CFrame.Angles(0, torsoTwist, 0),
+            Head  = CFrame.new(0, 1.5 - kneeBounce, 0),
+            ["Left Arm"]  = CFrame.new(-1.5, 1 - kneeBounce, leftArmZ)  * CFrame.Angles(0, 0, armSide) * CFrame.new(0, -1, 0),
+            ["Right Arm"] = CFrame.new( 1.5, 1 - kneeBounce, rightArmZ) * CFrame.Angles(0, 0, armSide) * CFrame.new(0, -1, 0),
+            ["Left Leg"]  = CFrame.new(-0.5, -2 + kneeBounce*0.5, 0) * CFrame.Angles(0, hipTwist*0.4, 0),
+            ["Right Leg"] = CFrame.new( 0.5, -2 + kneeBounce*0.5, 0) * CFrame.Angles(0, hipTwist*0.4, 0),
+        }
+    end,
+}
+DanceDefs["Ouen Dance"] = {
+    speed = 8,
+    pose = function(phase)
+        local armAngle = 0.785 * math.sin(phase * 2)
+        local armUp = math.sin(phase * 2) * 1.5
+        local legLift = math.sin(phase) * 0.8
+        local jumpBounce = math.abs(math.sin(phase * 2)) * 0.3
+        return {
+            Torso = CFrame.new(0, jumpBounce, 0) * CFrame.Angles(0, 0, math.sin(phase*2)*0.2),
+            Head  = CFrame.new(0, 1.5 + jumpBounce, 0),
+            ["Left Arm"]  = CFrame.new(-1.5, 1 + armUp, 0) * CFrame.Angles(0, 0, armAngle),
+            ["Right Arm"] = CFrame.new( 1.5, 1 - armUp, 0) * CFrame.Angles(0, 0, -armAngle),
+            ["Left Leg"]  = CFrame.new(-0.5, -2 + legLift, 0),
+            ["Right Leg"] = CFrame.new( 0.5, -2 - legLift, 0),
+        }
+    end,
+}
+DanceDefs["Cartoon"] = {
+    speed = 8,
+    pose = function(phase)
+        local jumpHeight = math.abs(math.sin(phase)) * 1.2
+        local legLift = math.sin(phase) * 1.8
+        local armCircle = math.sin(phase) * 2.5
+        local bodyTwist = math.sin(phase * 2) * 0.8
+        local headWobble = math.sin(phase * 2) * 0.3
+        return {
+            Torso = CFrame.new(0, jumpHeight, 0) * CFrame.Angles(0, bodyTwist, 0),
+            Head  = CFrame.new(0, 1.5 + jumpHeight, 0) * CFrame.Angles(0, headWobble, 0),
+            ["Left Arm"]  = CFrame.new(-1.5, 1 + jumpHeight, 0) * CFrame.Angles(armCircle, 0, 0),
+            ["Right Arm"] = CFrame.new( 1.5, 1 + jumpHeight, 0) * CFrame.Angles(-armCircle, 0, 0),
+            ["Left Leg"]  = CFrame.new(-0.5, -2 + legLift + jumpHeight, 0),
+            ["Right Leg"] = CFrame.new( 0.5, -2 - legLift + jumpHeight, 0),
+        }
+    end,
+}
+DanceDefs["Kawaii"] = {
+    speed = 5,
+    pose = function(phase)
+        local bounce = math.abs(math.sin(phase)) * 0.15
+        local sway = math.sin(phase * 1.5) * 0.3
+        local headTilt = math.sin(phase * 1.5) * 0.3
+        return {
+            Torso = CFrame.new(0, bounce, 0) * CFrame.Angles(0, sway, 0),
+            Head  = CFrame.new(0, 1.5 + bounce, 0) * CFrame.Angles(0, 0, headTilt),
+            ["Left Arm"]  = CFrame.new(-1.5, 1 + bounce, 0) * CFrame.Angles(0, 0, -0.5),
+            ["Right Arm"] = CFrame.new( 1.5, 1 + bounce, 0) * CFrame.Angles(0, 0, 0.5),
+            ["Left Leg"]  = CFrame.new(-0.5, -2 + bounce, 0),
+            ["Right Leg"] = CFrame.new( 0.5, -2 + bounce, 0),
+        }
+    end,
+}
+DanceDefs["Cool"] = {
+    speed = 1,
+    pose = function(phase)
+        return {
+            Torso = CFrame.new(0, 0, 0),
+            Head  = CFrame.new(0, 1.5, 0),
+            ["Left Arm"] = CFrame.new(-0.2, -0.5, -2) * CFrame.Angles(-1.396, -0.175, 0.175) * CFrame.new(0, -0.8, 0),
+            ["Left Leg"]  = CFrame.new(-0.5, -2, 0),
+            ["Right Leg"] = CFrame.new( 0.5, -2, 0),
+        }
+    end,
+}
+DanceDefs["Koshi huri"] = {
+    speed = 5,
+    pose = function(phase)
+        local hipX = math.sin(phase) * 0.5
+        local hipZ = math.cos(phase) * 0.3
+        local hipBounce = math.abs(math.sin(phase * 2)) * 0.2
+        local bodyTiltZ = math.sin(phase) * 0.26
+        return {
+            Torso = CFrame.new(hipX, hipBounce, hipZ) * CFrame.Angles(0, 0, bodyTiltZ),
+            Head  = CFrame.new(0, 1.5 + hipBounce, 0),
+            ["Left Arm"]  = CFrame.new(-1.5, 1 + hipBounce, 0) * CFrame.Angles(0, 0, -0.3),
+            ["Right Arm"] = CFrame.new( 1.5, 1 + hipBounce, 0) * CFrame.Angles(0, 0, 0.3),
+            ["Left Leg"]  = CFrame.new(-0.5, -2 + hipBounce, 0),
+            ["Right Leg"] = CFrame.new( 0.5, -2 + hipBounce, 0),
+        }
+    end,
+}
+DanceDefs["Lol"] = {
+    speed = 4,
+    pose = function(phase)
+        local laughIntensity = math.abs(math.sin(phase))
+        local leanBack = -0.26 - laughIntensity * 0.52
+        local bounce = laughIntensity * 0.3
+        local headTilt = 0.17 + laughIntensity * 0.43
+        return {
+            Torso = CFrame.new(0, bounce, 0) * CFrame.Angles(leanBack, 0, 0),
+            Head  = CFrame.new(0, 1.5 + bounce, 0) * CFrame.Angles(headTilt, 0, 0),
+            ["Left Arm"]  = CFrame.new(-1.5, 1 + bounce, 0) * CFrame.Angles(0, 0, -0.4),
+            ["Right Arm"] = CFrame.new( 1.5, 1 + bounce, 0) * CFrame.Angles(0, 0, 0.4),
+            ["Left Leg"]  = CFrame.new(-0.5, -2 + bounce, 0),
+            ["Right Leg"] = CFrame.new( 0.5, -2 + bounce, 0),
+        }
+    end,
+}
+local OriginalDanceParams = {
+    ["Robot Lock"] = {
+        speed = 6,
+        pose = function(phase)
+            local snap = math.floor(math.sin(phase) * 4) / 4
+            local snap2 = math.floor(math.sin(phase + math.pi) * 4) / 4
+            return {
+                Torso = CFrame.new(0,0,0) * CFrame.Angles(0, math.rad(snap*20), 0),
+                Head  = CFrame.new(0,1.5,0) * CFrame.Angles(0, math.rad(-snap*30), 0),
+                ["Left Arm"]  = CFrame.new(-1.5, 1+snap*0.5, 0)  * CFrame.Angles(math.rad(snap*90), 0, 0),
+                ["Right Arm"] = CFrame.new( 1.5, 1+snap2*0.5, 0) * CFrame.Angles(math.rad(snap2*90), 0, 0),
+                ["Left Leg"]  = CFrame.new(-0.5,-2,0),
+                ["Right Leg"] = CFrame.new( 0.5,-2,0),
+            }
+        end,
+    },
+    ["Disco Point"] = {
+        speed = 4,
+        pose = function(phase)
+            local s = math.sin(phase)
+            return {
+                Torso = CFrame.new(0, 0.1*math.abs(s), 0) * CFrame.Angles(0, 0.3*s, 0),
+                Head  = CFrame.new(0, 1.5, 0),
+                ["Left Arm"]  = CFrame.new(-1.5, 1, 0) * CFrame.Angles(0, 0, -1.4*s),
+                ["Right Arm"] = CFrame.new( 1.5, 1, 0) * CFrame.Angles(0, 0, 1.4*s),
+                ["Left Leg"]  = CFrame.new(-0.5, -2, 0),
+                ["Right Leg"] = CFrame.new( 0.5, -2, 0),
+            }
+        end,
+    },
+    ["Headbang"] = {
+        speed = 8,
+        pose = function(phase)
+            local bang = math.sin(phase)
+            return {
+                Torso = CFrame.new(0, 0.1*math.abs(bang), 0),
+                Head  = CFrame.new(0, 1.5, 0) * CFrame.Angles(0.6*bang, 0, 0),
+                ["Left Arm"]  = CFrame.new(-1.5, 1, 0) * CFrame.Angles(0, 0, -0.3),
+                ["Right Arm"] = CFrame.new( 1.5, 1, 0) * CFrame.Angles(0, 0, 0.3),
+                ["Left Leg"]  = CFrame.new(-0.5, -2, 0),
+                ["Right Leg"] = CFrame.new( 0.5, -2, 0),
+            }
+        end,
+    },
+    ["Victory Pump"] = {
+        speed = 5,
+        pose = function(phase)
+            local pump = math.abs(math.sin(phase))
+            return {
+                Torso = CFrame.new(0, pump*0.2, 0),
+                Head  = CFrame.new(0, 1.5 + pump*0.2, 0),
+                ["Left Arm"]  = CFrame.new(-1.5, 1 + pump*1.5, 0) * CFrame.Angles(0, 0, -0.2),
+                ["Right Arm"] = CFrame.new( 1.5, 1 + pump*1.5, 0) * CFrame.Angles(0, 0, 0.2),
+                ["Left Leg"]  = CFrame.new(-0.5, -2 + pump*0.1, 0),
+                ["Right Leg"] = CFrame.new( 0.5, -2 + pump*0.1, 0),
+            }
+        end,
+    },
+    ["Zombie Shuffle"] = {
+        speed = 3,
+        pose = function(phase)
+            local s = math.sin(phase)
+            return {
+                Torso = CFrame.new(0, 0, 0) * CFrame.Angles(0.2, s*0.2, 0),
+                Head  = CFrame.new(0, 1.5, 0) * CFrame.Angles(0.3, 0, s*0.1),
+                ["Left Arm"]  = CFrame.new(-1.5, 0.5, -1.5) * CFrame.Angles(-1.4, 0, 0),
+                ["Right Arm"] = CFrame.new( 1.5, 0.5, -1.5) * CFrame.Angles(-1.4, 0, 0),
+                ["Left Leg"]  = CFrame.new(-0.5, -2, s*0.3),
+                ["Right Leg"] = CFrame.new( 0.5, -2, -s*0.3),
+            }
+        end,
+    },
+}
+for k, v in pairs(OriginalDanceParams) do DanceDefs[k] = v end
+
+local function StartDanceRagdollSpam(char)
+    if Dance.ragdollSpamConn then task.cancel(Dance.ragdollSpamConn) end
+    Dance.ragdollSpamConn = task.spawn(function()
+        while Dance.activeMode ~= "off" and char and char.Parent do
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root and RagdollRemote then
+                pcall(function() RagdollRemote:FireServer(root, 9999999) end)
+            end
+            task.wait(0.05)
         end
     end)
 end
-
-local function stopFeatherLoop()
-    if FeatherLoopConn then FeatherLoopConn:Disconnect(); FeatherLoopConn = nil end
-    for _, point in ipairs(FeatherRowPoints) do
-        if point.part then point.part:Destroy() end
-        if point.assignedToy then
-            if point.assignedToy.BG then point.assignedToy.BG:Destroy() end
-            if point.assignedToy.BP then point.assignedToy.BP:Destroy() end
-        end
-    end
-    FeatherRowPoints = {}
-    FeatherAssignedToys = {}
+local function StopDanceRagdollSpam()
+    if Dance.ragdollSpamConn then task.cancel(Dance.ragdollSpamConn); Dance.ragdollSpamConn = nil end
 end
-
-local function toggleFeather(state)
-    FeatherConfig.Enabled = state
-    if state then
-        FeatherToys = findAllFeatherObjects()
-        FeatherRowPoints = createFeatherRowPoints(math.min(#FeatherToys, FeatherConfig.maxSparklers))
-        FeatherAssignedToys = assignFeatherToysToPoints()
-        startFeatherLoop()
-        OrionLib:MakeNotification({ Name = "フェザー開始", Content = "自動検出オブジェクト数: " .. #FeatherAssignedToys, Time = 3 })
-    else
-        stopFeatherLoop()
-        OrionLib:MakeNotification({ Name = "フェザー停止", Content = "フェザー配置を解除", Time = 2 })
-    end
+local function StopDancePose()
+    if Dance.poseConnection then Dance.poseConnection:Disconnect(); Dance.poseConnection = nil end
+    Dance.activeMode = "off"
+    StopDanceRagdollSpam()
+end
+local function PlayDance(arg, name)
+    local def = DanceDefs[name]
+    if not def then return end
+    StopDancePose()
+    local char = arg or Player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+    if RagdollRemote then RagdollRemote:FireServer(root, 9999999) end
+    Dance.activeMode = "dance"
+    StartDanceRagdollSpam(char)
+    local movePosition = root.Position
+    local walkSpeed = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
+    local teleportThreshold = 8
+    local t0 = os.clock()
+    Dance.poseConnection = RunService.Heartbeat:Connect(function(dt)
+        if Dance.activeMode ~= "dance" then return end
+        local r = char:FindFirstChild("HumanoidRootPart")
+        local h = char:FindFirstChildOfClass("Humanoid")
+        if not r or not h or not char.Parent then StopDancePose() return end
+        if teleportThreshold < (r.Position - movePosition).Magnitude then movePosition = r.Position end
+        local mv = h.MoveDirection
+        if mv.Magnitude > 0.01 then movePosition = movePosition + mv * walkSpeed * dt end
+        local look = Cam.CFrame.LookVector
+        local yaw = math.atan2(-look.X, -look.Z)
+        local target = CFrame.new(movePosition) * CFrame.Angles(0, yaw, 0)
+        r.CFrame = target
+        local t = os.clock() - t0
+        local phase = t * def.speed
+        local offsets = def.pose(phase)
+        for k, v in pairs(offsets) do
+            local part = char:FindFirstChild(k)
+            if part and part:IsA("BasePart") then
+                part.CFrame = target * v
+                part.AssemblyLinearVelocity = Vector3.zero
+            end
+        end
+    end)
 end
 
 -- =====================================================
@@ -2218,6 +2758,33 @@ local function executeBarrierBreakNoTP()
 end
 
 -- =====================================================
+-- 退出通知（黄色・5秒・即ピン音）
+-- =====================================================
+local function playPingSound()
+    task.spawn(function()
+        local sound = Instance.new("Sound")
+        sound.SoundId = "rbxassetid://97643101798871"
+        sound.Volume = 1
+        sound.Parent = workspace
+        if not sound.IsLoaded then sound.Loaded:Wait() end
+        sound:Play()
+        sound.Ended:Connect(function() sound:Destroy() end)
+        task.delay(5, function() if sound then sound:Destroy() end end)
+    end)
+end
+
+Players.PlayerRemoving:Connect(function(leavingPlayer)
+    local name = leavingPlayer.DisplayName or leavingPlayer.Name
+    OrionLib:MakeNotification({
+        Name = "🟡 退出",
+        Content = "🟡 " .. name .. " が抜けました👋",
+        Time = 5,
+        Image = "rbxassetid://4483345998"
+    })
+    playPingSound()
+end)
+
+-- =====================================================
 -- UI: 1. プレイヤータブ
 -- =====================================================
 local CharTab = Window:MakeTab({ Name = "プレイヤー", Icon = "rbxassetid://4483345998", PremiumOnly = false })
@@ -2323,6 +2890,13 @@ KickTab:AddButton({
     end
 })
 
+KickTab:AddSection({ Name = "Auto Sit" })
+KickTab:AddToggle({
+    Name = "ブロブマンに自動で座る",
+    Default = false,
+    Callback = function(v) SetAutoSit(v) end
+})
+
 -- =====================================================
 -- UI: 4. キルタブ
 -- =====================================================
@@ -2395,43 +2969,101 @@ KillToggle = KillTab:AddToggle({
 })
 
 -- =====================================================
--- UI: 5. toys タブ
+-- UI: 5. オーラタブ
 -- =====================================================
-local ToysTab = Window:MakeTab({ Name = "toys", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-ToysTab:AddSection({ Name = "フェザー設定" })
-ToysTab:AddLabel("対応: 板 / ガラス箱 / 花火 のみ")
-ToysTab:AddToggle({ Name = "フェザー起動（背面配置）", Default = false, Callback = toggleFeather })
-ToysTab:AddToggle({ Name = "プレイヤー追従", Default = FeatherConfig.followPlayer, Callback = function(v) FeatherConfig.followPlayer = v end })
+local AuraTab = Window:MakeTab({ Name = "オーラ", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 
-ToysTab:AddSection({ Name = "配置設定" })
-ToysTab:AddSlider({ Name = "最大オブジェクト数", Min = 2, Max = 100, Default = FeatherConfig.maxSparklers, Increment = 2, Callback = function(v)
-    FeatherConfig.maxSparklers = v
-    if FeatherConfig.Enabled then toggleFeather(false); task.wait(0.1); toggleFeather(true) end
-end })
-ToysTab:AddSlider({ Name = "オブジェクト間隔", Min = 0.5, Max = 20, Default = FeatherConfig.spacing, Increment = 0.5, Callback = function(v)
-    FeatherConfig.spacing = v
-    if FeatherConfig.Enabled then toggleFeather(false); task.wait(0.1); toggleFeather(true) end
-end })
-ToysTab:AddSlider({ Name = "高さオフセット", Min = -30, Max = 50, Default = FeatherConfig.heightOffset, Increment = 0.5, Callback = function(v) FeatherConfig.heightOffset = v end })
-ToysTab:AddSlider({ Name = "背面オフセット", Min = -20, Max = 50, Default = FeatherConfig.backwardOffset, Increment = 0.5, Callback = function(v) FeatherConfig.backwardOffset = v end })
+AuraTab:AddSection({ Name = "共通設定" })
+AuraTab:AddSlider({ Name = "オーラ範囲", Min = 5, Max = 100, Default = 15, Increment = 1, Callback = function(v) Auras.SetRadius(v) end })
+AuraTab:AddSlider({ Name = "フリング力", Min = 10, Max = 500, Default = 100, Increment = 10, Callback = function(v) Auras.SetFlingPower(v) end })
 
-ToysTab:AddSection({ Name = "角度・向き設定" })
-ToysTab:AddSlider({ Name = "オブジェクト傾き角度", Min = -90, Max = 90, Default = FeatherConfig.tiltAngle, Increment = 5, Callback = function(v) FeatherConfig.tiltAngle = v end })
-ToysTab:AddSlider({ Name = "向き調整（左右回転）", Min = -180, Max = 180, Default = FeatherConfig.rotationOffset, Increment = 5, Callback = function(v) FeatherConfig.rotationOffset = v end })
+AuraTab:AddSection({ Name = "Players Aura" })
+AuraTab:AddDropdown({
+    Name = "モード",
+    Default = "Fling",
+    Options = { "Fling", "Network", "Kill", "Send To The Heaven", "Void" },
+    Callback = function(v) Auras.SetGrabAuraMode(v) end
+})
+AuraTab:AddToggle({ Name = "Players Aura", Default = false, Callback = function(v) Auras.SetGrabAura(v) end })
 
-ToysTab:AddSection({ Name = "上下動設定" })
-ToysTab:AddSlider({ Name = "上下動速度", Min = 0, Max = 20, Default = FeatherConfig.waveSpeed, Increment = 0.5, Callback = function(v) FeatherConfig.waveSpeed = v end })
-ToysTab:AddSlider({ Name = "基本振幅（波の大きさ）", Min = 0, Max = 20, Default = FeatherConfig.baseAmplitude, Increment = 0.5, Callback = function(v) FeatherConfig.baseAmplitude = v end })
-ToysTab:AddButton({
-    Name = "オブジェクト再検出（再スキャン）",
-    Callback = function()
-        if FeatherConfig.Enabled then toggleFeather(false); task.wait(0.3); toggleFeather(true)
-        else OrionLib:MakeNotification({ Name = "再検出", Content = "フェザー起動中のみ有効です", Time = 2 }) end
+AuraTab:AddSection({ Name = "Banana Aura" })
+AuraTab:AddToggle({ Name = "Banana Aura", Default = false, Callback = function(v) Auras.SetBananaAura(v) end })
+
+AuraTab:AddSection({ Name = "Extinguish Aura" })
+AuraTab:AddToggle({ Name = "Extinguish Aura", Default = false, Callback = function(v) Auras.SetExtinguishAura(v) end })
+
+AuraTab:AddSection({ Name = "Toys Aura" })
+AuraTab:AddDropdown({
+    Name = "Toysモード",
+    Default = "Fling",
+    Options = { "Fling", "Noclip", "Send To The Heaven", "Void" },
+    Callback = function(v) Auras.SetToysAuraMode(v) end
+})
+AuraTab:AddToggle({ Name = "Toys Aura", Default = false, Callback = function(v) Auras.SetToysAura(v) end })
+
+AuraTab:AddSection({ Name = "Blobman Aura" })
+AuraTab:AddDropdown({
+    Name = "Blobmanモード",
+    Default = "Kick",
+    Options = { "Kick", "Network", "Break Gucci" },
+    Callback = function(v) Auras.SetBlobmanAuraMode(v) end
+})
+AuraTab:AddToggle({ Name = "Blobman Aura", Default = false, Callback = function(v) Auras.SetBlobmanAura(v) end })
+
+-- =====================================================
+-- UI: 6. ダンスタブ
+-- =====================================================
+local DanceTab = Window:MakeTab({ Name = "ダンス", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+DanceTab:AddSection({ Name = "ダンス" })
+
+local danceNames = {}
+for name in pairs(DanceDefs) do table.insert(danceNames, name) end
+table.sort(danceNames)
+
+DanceTab:AddToggle({
+    Name = "Dance Enabled",
+    Default = false,
+    Callback = function(state)
+        Dance.danceEnabled = state
+        if state then
+            local c = Player.Character
+            if c then PlayDance(c, Dance.selectedDance) end
+        else
+            StopDancePose()
+        end
     end
 })
 
+DanceTab:AddDropdown({
+    Name = "Dance Type",
+    Default = "Floss Dance",
+    Options = danceNames,
+    Callback = function(opt)
+        Dance.selectedDance = opt
+        if Dance.danceEnabled then
+            local c = Player.Character
+            if c then PlayDance(c, opt) end
+        end
+    end
+})
+
+DanceTab:AddButton({
+    Name = "Stop",
+    Callback = function()
+        StopDancePose()
+        OrionLib:MakeNotification({ Name = "停止", Content = "停止しました", Time = 2 })
+    end
+})
+
+Player.CharacterAdded:Connect(function(character)
+    task.wait(0.2)
+    if Dance.activeMode == "dance" and Dance.danceEnabled then
+        PlayDance(character, Dance.selectedDance)
+    end
+end)
+
 -- =====================================================
--- UI: 6. その他 タブ
+-- UI: 7. その他 タブ
 -- =====================================================
 local OtherTab = Window:MakeTab({ Name = "その他", Icon = "rbxassetid://4483345998", PremiumOnly = false })
 
@@ -2455,8 +3087,9 @@ game:BindToClose(function()
     Settings.WalkspeedEnabled = false
     Settings.InfiniteJump = false
     Settings.ThirdPerson = false
-    FeatherConfig.Enabled = false
     AutoReplyConfig.enabled = false
+    AutoSitEnabled = false
+    StopDancePose()
 end)
 
 task.spawn(function()
